@@ -16,7 +16,7 @@ end
 
 
 dir = dirname(Base. source_path())
-time_series = CSV.read(joinpath(dir, "data\\timedata.csv"), DataFrame)
+time_series = CSV.read(joinpath(dir, "data\\timedata_monthly_night.csv"), DataFrame)
 tech_data = CSV.read(joinpath(dir, "data\\technologies.csv"), DataFrame)
 
 ### data preprocessing ###
@@ -29,9 +29,11 @@ S = tech_data[tech_data[!,:investment_storage] .> 0 ,:technology]
 # Heat generation (requires heat balance)
 HEAT = tech_data[tech_data[:,:heat_ratio] .!= 0, :technology]
 P_CHP = intersect(DISP,HEAT)
+
 # Import/Export with National Grid
 # Z = unique(zones[:,:zone])
 # P = zones[:,:id] |> Vector
+
 ### parameters ###
 annuity_factor(n,r) = r * (1+r)^n / (((1+r)^n)-1)
 
@@ -71,6 +73,9 @@ end
 demand_elec = time_series[:,:demand_elec] |> Array
 demand_heat = time_series[:,:demand_heat] |> Array
 
+demand_elec
+demand_heat
+
 availability = Dict(nondisp => time_series[:,nondisp] for nondisp in NONDISP)
 successor(arr, x) = (x == length(arr)) ? 1 : x + 1
 
@@ -98,6 +103,7 @@ end
 
 @objective(m, Min,
     sum(vc[disp] * G[disp,t] for disp in DISP, t in T) * dispatch_scale
+#    + sum(vc[ht] * G[ht,t] for ht in HEAT, t in T) * dispatch_scale
     + sum(ic_generation_cap[p] * CAP_G[p] for p in P)
     + sum(ic_charging_cap[s] * CAP_D[s] for s in S if haskey(ic_charging_cap, s))
     + sum(ic_storage_cap[s] * CAP_L[s] for s in S)
@@ -140,6 +146,9 @@ end
     L_stor[s, t]
     + eff_in[s]*D_stor[s,t]
     - (1/eff_out[s]) * G[s,t] )
+
+@constraint(m,MaxCHP[chp=P_CHP,t=T],
+    G[chp,t] <= 8000)
 
 optimize!(m)
 
