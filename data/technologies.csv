@@ -1,0 +1,5 @@
+technology,dispatchable,vc,lifetime,investment_generation,investment_charge,investment_storage,storage_efficiency_in,storage_efficiency_out,heat_ratio
+pv,0,0,25,300,-1,-1,-1,-1,-1
+battery,1,0,15,140,0,250,0.94,0.94,-1
+chp,1,15,30,200,-1,-1,-1,-1,0.6
+heatpumps,1,5,30,100,-1,-1,-1,-1,0.8
