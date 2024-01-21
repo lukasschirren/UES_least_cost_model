@@ -28,10 +28,10 @@ NONDISP = tech_data[tech_data[!,:dispatchable] .== 0 ,:technology]
 S = tech_data[tech_data[!,:investment_storage] .> 0 ,:technology]
 # Heat generation (requires heat balance)
 HEAT = tech_data[tech_data[:,:heat_ratio] .!= 0, :technology]
+P_CHP = intersect(DISP,HEAT)
 # Import/Export with National Grid
 # Z = unique(zones[:,:zone])
 # P = zones[:,:id] |> Vector
-
 ### parameters ###
 annuity_factor(n,r) = r * (1+r)^n / (((1+r)^n)-1)
 
@@ -77,12 +77,15 @@ successor(arr, x) = (x == length(arr)) ? 1 : x + 1
 #  month
 dispatch_scale = 8760/length(T)
 
+
+
 ### model ### 
 m = Model(Clp.Optimizer)
 
 @variables m begin
     # variables dispatch (include heat)
     G[DISP, T] >= 0
+    H[HEAT, T] >= 0
     CU[T] >= 0
     D_stor[S,T] >= 0
     L_stor[S,T] >= 0
@@ -100,7 +103,7 @@ end
     + sum(ic_storage_cap[s] * CAP_L[s] for s in S)
 )
 
-
+# Renewable generation from SOLAR
 @expression(m, feed_in[ndisp=NONDISP, t=T], availability[ndisp][t]*CAP_G[ndisp])
 
 @constraint(m, ElectricityBalance[t=T],
@@ -111,6 +114,13 @@ end
     ==
     demand_elec[t])
 
+@constraint(m,HeatBalance[t=T],
+    sum(H[ht,t] for ht in HEAT)
+    >=
+    demand_heat[t])
+
+@constraint(m, CoGeneration[chp=P_CHP,t=T],
+    G[chp,t] == heat_ratio[chp] * H[chp, t])
 
 @constraint(m, MaxGeneration[disp=DISP, t=T],
     G[disp,t] <= CAP_G[disp])
