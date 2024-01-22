@@ -92,21 +92,20 @@ m = Model(Clp.Optimizer)
     G[DISP, T] >= 0
     H[HEAT, T] >= 0
     CU[T] >= 0
-    D_stor[S,T] >= 0
-    L_stor[S,T] >= 0
+    # D_stor[S,T] >= 0
+    # L_stor[S,T] >= 0
 
     # variables investment model
     CAP_G[P] >= 0
-    CAP_D[S] >= 0
-    CAP_L[S] >= 0
+    # CAP_D[S] >= 0
+    # CAP_L[S] >= 0
 end
 
 @objective(m, Min,
     sum(vc[disp] * G[disp,t] for disp in DISP, t in T) * dispatch_scale
-#    + sum(vc[ht] * G[ht,t] for ht in HEAT, t in T) * dispatch_scale
     + sum(ic_generation_cap[p] * CAP_G[p] for p in P)
-    + sum(ic_charging_cap[s] * CAP_D[s] for s in S if haskey(ic_charging_cap, s))
-    + sum(ic_storage_cap[s] * CAP_L[s] for s in S)
+    # + sum(ic_charging_cap[s] * CAP_D[s] for s in S if haskey(ic_charging_cap, s))
+    # + sum(ic_storage_cap[s] * CAP_L[s] for s in S)
 )
 
 # Renewable generation from SOLAR
@@ -128,33 +127,41 @@ end
 @constraint(m, CoGeneration[chp=P_CHP,t=T],
     G[chp,t] == heat_ratio[chp] * H[chp, t])
 
-@constraint(m, MaxGeneration[disp=DISP, t=T],
+# Max generation of dispatchable electricity generation (CHP)
+@constraint(m, MaxElecGeneration[disp=DISP, t=T],
     G[disp,t] <= CAP_G[disp])
+# Max generation of heat generation (CHP, heatpumps)
+@constraint(m,MaxHeatGeneration[ht=HEAT,t=T],
+    H[ht,t] <= CAP_G[ht])
 
-@constraint(m, MaxCharge[s=S, t=T; haskey(ic_charging_cap, s)],
-    D_stor[s,t] <= CAP_D[s])
+##########
+# Battery
 
-@constraint(m, SymmetricChargingPower[s=S, t=T; !(haskey(ic_charging_cap, s))],
-    CAP_G[s] == CAP_D[s])
+# @constraint(m, MaxCharge[s=S, t=T; haskey(ic_charging_cap, s)],
+#     D_stor[s,t] <= CAP_D[s])
 
-@constraint(m, MaxLevel[s=S, t=T],
-    L_stor[s,t] <= CAP_L[s])
+# @constraint(m, SymmetricChargingPower[s=S, t=T; !(haskey(ic_charging_cap, s))],
+#     CAP_G[s] == CAP_D[s])
 
-@constraint(m, StorageLevel[s=S, t=T],
-    L_stor[s, successor(T,t)]
-    ==
-    L_stor[s, t]
-    + eff_in[s]*D_stor[s,t]
-    - (1/eff_out[s]) * G[s,t] )
+# @constraint(m, MaxLevel[s=S, t=T],
+#     L_stor[s,t] <= CAP_L[s])
 
-@constraint(m,MaxCHP[chp=P_CHP,t=T],
-    G[chp,t] <= 8000)
+# @constraint(m, StorageLevel[s=S, t=T],
+#     L_stor[s, successor(T,t)]
+#     ==
+#     L_stor[s, t]
+#     + eff_in[s]*D_stor[s,t]
+#     - (1/eff_out[s]) * G[s,t] )
+
+# @constraint(m,MaxCHP[chp=P_CHP,t=T],
+#     G[chp,t] <= 8000)
 
 optimize!(m)
 
 objective_value(m)
 
-
+value.(CAP_G)
+JuMP.value.(H)
 #################################
 ## Plots
 #################################
