@@ -51,7 +51,7 @@ heat_ratio = dictzip(tech_data, :technology => :heat_ratio)
 
 for row in eachrow(tech_data)
     af = annuity_factor(row.lifetime, interest_rate)
-    ic_generation_cap[row.technology] = 1000*row.investment_generation * af
+    ic_generation_cap[row.technology] = 1000*row.investment_generation * af # Multiplied by 1000
 
     iccc = row.investment_charge * af
     iccc > 0 && (ic_charging_cap[row.technology] = iccc)
@@ -64,6 +64,8 @@ for row in eachrow(tech_data)
 
     vc[row.technology] = row.vc
 end
+ic_generation_cap
+vc
 
 ### time series ###
 # demand_elec_res = time_series[:,:demand_elec_res] |> Array
@@ -76,10 +78,12 @@ demand_heat = time_series[:,:demand_heat] |> Array
 demand_elec
 demand_heat
 
+# Feed in of renewable energy
 availability = Dict(nondisp => time_series[:,nondisp] for nondisp in NONDISP)
+# Storage level at (t+1)
 successor(arr, x) = (x == length(arr)) ? 1 : x + 1
 
-#  month
+# How many hours in t
 dispatch_scale = 8760/length(T)
 
 
@@ -108,7 +112,7 @@ end
     # + sum(ic_storage_cap[s] * CAP_L[s] for s in S)
 )
 
-# Renewable generation from SOLAR
+# Renewable generation
 @expression(m, feed_in[ndisp=NONDISP, t=T], availability[ndisp][t]*CAP_G[ndisp])
 
 @constraint(m, ElectricityBalance[t=T],
@@ -119,20 +123,23 @@ end
     ==
     demand_elec[t])
 
+# Dispatchable electricity generation must equal installed capacity (CHP)
+@constraint(m, MaxElecGeneration[disp=DISP, t=T],
+    G[disp,t] <= CAP_G[disp])
+
 @constraint(m,HeatBalance[t=T],
     sum(H[ht,t] for ht in HEAT)
     >=
     demand_heat[t])
 
-@constraint(m, CoGeneration[chp=P_CHP,t=T],
-    G[chp,t] == heat_ratio[chp] * H[chp, t])
-
-# Max generation of dispatchable electricity generation (CHP)
-@constraint(m, MaxElecGeneration[disp=DISP, t=T],
-    G[disp,t] <= CAP_G[disp])
-# Max generation of heat generation (CHP, heatpumps)
+# Generation of heat must equal installed capacity (CHP, heatpumps)
 @constraint(m,MaxHeatGeneration[ht=HEAT,t=T],
     H[ht,t] <= CAP_G[ht])
+
+# Cogeneration of CHP plant
+@constraint(m, CoGeneration[chp=P_CHP,t=T],
+G[chp,t] == heat_ratio[chp] * H[chp, t])
+
 
 ##########
 # Battery
@@ -161,7 +168,7 @@ optimize!(m)
 objective_value(m)
 
 value.(CAP_G)
-JuMP.value.(H)
+value.(H)
 #################################
 ## Plots
 #################################
