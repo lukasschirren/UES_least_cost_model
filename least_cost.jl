@@ -16,7 +16,8 @@ end
 
 
 dir = dirname(Base. source_path())
-time_series = CSV.read(joinpath(dir, "data\\timedata_monthly_night.csv"), DataFrame)
+time_series = CSV.read(joinpath(dir, "data\\timedata_monthly.csv"), DataFrame)
+
 tech_data = CSV.read(joinpath(dir, "data\\technologies.csv"), DataFrame)
 
 ### data preprocessing ###
@@ -29,6 +30,7 @@ S = tech_data[tech_data[!,:investment_storage] .> 0 ,:technology]
 # Heat generation (requires heat balance)
 HEAT = tech_data[(tech_data[:,:thermal_eff] .!= 0), :technology]
 P_CHP = intersect(DISP,HEAT)
+H_only = symdiff(HEAT,P_CHP)
 
 # Import/Export with National Grid
 # Z = unique(zones[:,:zone])
@@ -51,7 +53,7 @@ heat_ratio = dictzip(tech_data, :technology => :heat_ratio)
 
 for row in eachrow(tech_data)
     af = annuity_factor(row.lifetime, interest_rate)
-    ic_generation_cap[row.technology] = row.investment_generation * af # Multiplied by 1000
+    ic_generation_cap[row.technology] = row.investment_generation * af + row.o_and_m # Multiplied by 1000
 
     iccc = row.investment_charge * af
     iccc > 0 && (ic_charging_cap[row.technology] = iccc)
@@ -95,9 +97,10 @@ m = Model(Clp.Optimizer)
 
 @variables m begin
     # variables dispatch (include heat)
-    G[DISP, T] >= 0
+    G[P, T] >= 0
     H[HEAT, T] >= 0
     CU[T] >= 0
+    HeatDump[T] >= 0
     D_stor[S,T] >= 0
     L_stor[S,T] >= 0
 
@@ -109,6 +112,7 @@ end
 
 @objective(m, Min,
     sum(vc[disp] * G[disp,t] for disp in DISP, t in T) * dispatch_scale
+    + sum(vc[h] * H[h,t] for h in H_only, t in T) * dispatch_scale
     + sum(ic_generation_cap[p] * CAP_G[p] for p in P)
     + sum(ic_charging_cap[s] * CAP_D[s] for s in S if haskey(ic_charging_cap, s))
     + sum(ic_storage_cap[s] * CAP_L[s] for s in S)
@@ -123,7 +127,7 @@ end
     - sum(D_stor[s,t] for s in S)
     - CU[t]
     ==
-    demand_elec[t])
+    demand_elec[t] / dispatch_scale)
 
 # Dispatchable electricity generation must equal installed capacity (CHP)
 @constraint(m, MaxElecGeneration[disp=DISP, t=T],
@@ -131,8 +135,9 @@ end
 
 @constraint(m,HeatBalance[t=T],
     sum(H[ht,t] for ht in HEAT)
-    >=
-    demand_heat[t])
+    - HeatDump[t]
+    ==
+    demand_heat[t] / dispatch_scale)
 
 # Generation of heat must equal installed capacity (CHP, heatpumps)
 @constraint(m,MaxHeatGeneration[ht=HEAT,t=T],
@@ -140,7 +145,7 @@ end
 
 # Cogeneration of CHP plant
 @constraint(m, CoGeneration[chp=P_CHP,t=T],
-G[chp,t] == 1/heat_ratio[chp] * H[chp, t])
+    G[chp,t] == 1/heat_ratio[chp] * H[chp, t])
 
 
 ##########
@@ -163,11 +168,11 @@ G[chp,t] == 1/heat_ratio[chp] * H[chp, t])
     - (1/eff_out[s]) * G[s,t] )
 
 # CONSTRAINT FOR CHP
-# @constraint(m,MaxCHP[chp=P_CHP],
-#     CAP_G[chp] <= 5000)
+@constraint(m,MaxCHP[chp=P_CHP],
+    CAP_G[chp] <= 5000) # max is 5MW
 
 # @constraint(m,MaxPV[ndisp=NONDISP],
-#      CAP_G[ndisp] <= 26228.18)
+#      CAP_G[ndisp] <= 26228.18) # Max is 26MW
 
 
 optimize!(m)
@@ -188,10 +193,11 @@ colordict = Dict(
     "chp_bio" => :steelblue3,
     "chp_diesel" => :dodgerblue4,
     "heatpumps" => :goldenrod1,
-    "oil boiler" => :azure4,
+    "oil_boiler" => :azure4,
     "battery" => :lightgrey,
     "demand" => :darkgrey,
-    "curtailment" => :red
+    "curtailment" => :red,
+    "heat_dump" => :red,
 )
 
 
@@ -208,7 +214,7 @@ df_demand = DataFrame(hour=T, technology="demand", value=demand_elec)
 result_generation = vcat(result_feed_in, result_G)
 result_demand = vcat(result_charging, result_CU, df_demand)
 
-table_gen = unstack(result_generation, :hour, :technology, :value)
+table_gen = unstack(result_generation, :hour, :technology, :value,combine=sum)
 table_gen = table_gen[!,[NONDISP..., DISP...]]
 labels = names(table_gen) |> permutedims
 colors = [colordict[tech] for tech in labels]
@@ -239,6 +245,58 @@ areaplot!(
 )
 
 hline!(balance_plot, [0], color=:black, label="", width=2)
+
+######## plot heat balance ###########
+
+result_H = get_result(H, [:technology, :hour])
+
+result_HeatDump = get_result(HeatDump, [:hour])
+result_HeatDump[!,:technology] .= "heat_dump"
+
+df_demand_heat = DataFrame(hour=T, technology="demand", value=demand_heat)
+
+result_demand = vcat(result_charging, result_HeatDump, df_demand)
+
+
+result_H.technology
+table_gen = unstack(result_H, :hour, :technology, :value)
+table_gen = table_gen[!,[P_CHP..., H_only...]]
+
+table_gen = table_gen[!,[HEAT...]]
+labels = names(table_gen) |> permutedims
+colors = [colordict[tech] for tech in labels]
+data_gen = Array(table_gen)
+
+balance_plot = areaplot(
+    data_gen,
+    label=labels,
+    color=colors,
+    width=0,
+    leg=:outertopright
+)
+
+# Displaying demand
+
+table_dem = unstack(df_demand_heat, :hour, :technology, :value)
+labels2 = names(table_dem) |> permutedims
+colors2 = [colordict[tech] for tech in labels2]
+replace!(labels2, [item => "" for item in intersect(labels2, labels)]...)
+data_dem = -Array(table_dem)
+
+areaplot!(
+    balance_plot,
+    data_dem,
+    label=labels2,
+    color=colors2,
+    width=0,
+    leg=:outertopright
+)
+
+hline!(balance_plot, [0], color=:black, label="", width=2)
+
+
+
+
 #################################
 
 
