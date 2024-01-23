@@ -104,7 +104,6 @@ m = Model(Clp.Optimizer)
     D_stor[S,T] >= 0
     L_stor[S,T] >= 0
 
-    # GRID[T] >= 0
     # variables investment model
     CAP_G[P] >= 0
     CAP_D[S] >= 0
@@ -170,7 +169,7 @@ end
 
 # CONSTRAINT FOR CHP
 @constraint(m,MaxCHP[chp=P_CHP],
-    CAP_G[chp] <= 3800)
+    CAP_G[chp] <= 5000) # max is 5MW
 
 # @constraint(m,MaxPV[ndisp=NONDISP],
 #      CAP_G[ndisp] <= 26228.18) # Max is 26MW
