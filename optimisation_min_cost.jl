@@ -112,8 +112,8 @@ m = Model(Clp.Optimizer)
 end
 
 @objective(m, Min,
-    sum(vc[disp] * G[disp,t] for disp in DISP, t in T) * dispatch_scale
-    + sum(vc[h] * H[h,t] for h in H_only, t in T) * dispatch_scale
+    sum(vc[disp] * G[disp,t] for disp in DISP, t in T) #* dispatch_scale
+    + sum(vc[h] * H[h,t] for h in H_only, t in T) #* dispatch_scale
     + sum(ic_generation_cap[p] * CAP_G[p] for p in P)
     + sum(ic_charging_cap[s] * CAP_D[s] for s in S if haskey(ic_charging_cap, s))
     + sum(ic_storage_cap[s] * CAP_L[s] for s in S)
@@ -136,8 +136,7 @@ end
 
 @constraint(m,HeatBalance[t=T],
     sum(H[ht,t] for ht in HEAT)
-    - HeatDump[t]
-    ==
+    >=
     demand_heat[t] / dispatch_scale)
 
 # Generation of heat must equal installed capacity (CHP, heatpumps)
@@ -169,12 +168,14 @@ end
     - (1/eff_out[s]) * G[s,t] )
 
 # CONSTRAINT FOR CHP
-@constraint(m,MaxCHP[chp=P_CHP],
-    CAP_G[chp] <= 3800)
+@constraint(m,MaxCHP,
+    sum(CAP_G[chp] for chp in P_CHP) <= 3800) #*cells
 
-# @constraint(m,MaxPV[ndisp=NONDISP],
-#      CAP_G[ndisp] <= 26228.18) # Max is 26MW
+@constraint(m,MaxPV[ndisp=NONDISP],
+     CAP_G[ndisp] <= 26228.18) # Max is 26MW
 
+# @constraint(m, Pipeline[chp=P_CHP],
+#   )
 
 optimize!(m)
 
@@ -192,13 +193,13 @@ colordict = Dict(
     "pv" => :yellow,
     "chp_gas" => :dodgerblue1,
     "chp_bio" => :steelblue3,
-    "chp_diesel" => :dodgerblue4,
+    "chp_biodiesel" => :dodgerblue4,
     "heatpumps" => :goldenrod1,
-    "oil_boiler" => :azure4,
-    "battery" => :lightgrey,
+    "gas_boiler" => :slateblue2,
+    "battery" => :lightseagreen,
     "demand" => :darkgrey,
     "curtailment" => :red,
-    "heat_dump" => :red,
+    #"heat_dump" => :red,
 )
 
 
@@ -251,12 +252,12 @@ hline!(balance_plot, [0], color=:black, label="", width=2)
 
 result_H = get_result(H, [:technology, :hour])
 
-result_HeatDump = get_result(HeatDump, [:hour])
-result_HeatDump[!,:technology] .= "heat_dump"
+#result_HeatDump = get_result(HeatDump, [:hour])
+#result_HeatDump[!,:technology] .= "heat_dump"
 
 df_demand_heat = DataFrame(hour=T, technology="demand", value=demand_heat)
 
-result_demand = vcat(result_charging, result_HeatDump, df_demand)
+result_demand = vcat(result_charging, df_demand)
 
 
 result_H.technology
@@ -279,6 +280,7 @@ balance_plot = areaplot(
 # Displaying demand
 
 table_dem = unstack(df_demand_heat, :hour, :technology, :value)
+table_dem = table_dem[!,["demand"]]
 labels2 = names(table_dem) |> permutedims
 colors2 = [colordict[tech] for tech in labels2]
 replace!(labels2, [item => "" for item in intersect(labels2, labels)]...)
@@ -314,36 +316,36 @@ p1 = bar(
     rotation=45
 )
 
-df_installed_charge = get_result(CAP_D, [:technology])
-x = df_installed_charge[!,:technology]
-y = df_installed_charge[!,:value] ./ 1000
-p2 = bar(
-    x,
-    y,
-    leg=false,
-    title="Installed power charging",
-    ylim=ylims(p1),
-    rotation=45
-)
+# df_installed_charge = get_result(CAP_D, [:technology])
+# x = df_installed_charge[!,:technology]
+# y = df_installed_charge[!,:value] ./ 1000
+# p2 = bar(
+#     x,
+#     y,
+#     leg=false,
+#     title="Installed power charging",
+#     ylim=ylims(p1),
+#     rotation=45
+# )
 
-df_installed_storage = get_result(CAP_L, [:technology])
-x = df_installed_storage[!,:technology]
-y = df_installed_storage[!,:value] ./ 1e6
+# df_installed_storage = get_result(CAP_L, [:technology])
+# x = df_installed_storage[!,:technology]
+# y = df_installed_storage[!,:value] ./ 1e6
 
-p3 = bar(
-    x,
-    y,
-    leg=false,
-    title="Installed storage capacity",
-    ylabel="TWh",
-    guidefontsize=8,
-    rotation=45
+# p3 = bar(
+#     x,
+#     y,
+#     leg=false,
+#     title="Installed storage capacity",
+#     ylabel="TWh",
+#     guidefontsize=8,
+#     rotation=45
 )
 
 plot(
     p1,
-    p2,
-    p3,
+    # p2,
+    # p3,
     layout=(1,3),
     titlefontsize=8,
     tickfontsize=6
