@@ -2,6 +2,7 @@ using JuMP
 using Clp
 using Plots
 using DataFrames, CSV
+using Gurobi
 include("helper_functions.jl")
 
 # dictzip
@@ -115,7 +116,7 @@ end
     sum(vc[disp] * G[disp,t] for disp in DISP, t in T) #* dispatch_scale
     + sum(vc[h] * H[h,t] for h in H_only, t in T) #* dispatch_scale
     + sum(ic_generation_cap[p] * CAP_G[p] for p in P)
-    + sum(ic_charging_cap[s] * CAP_D[s] for s in S if haskey(ic_charging_cap, s))
+    #+ sum(ic_charging_cap[s] * CAP_D[s] for s in S if haskey(ic_charging_cap, s))
     + sum(ic_storage_cap[s] * CAP_L[s] for s in S)
 )
 
