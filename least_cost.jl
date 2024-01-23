@@ -27,7 +27,7 @@ DISP = tech_data[tech_data[!,:dispatchable] .== 1 ,:technology]
 NONDISP = tech_data[tech_data[!,:dispatchable] .== 0 ,:technology]
 S = tech_data[tech_data[!,:investment_storage] .> 0 ,:technology]
 # Heat generation (requires heat balance)
-HEAT = tech_data[tech_data[:,:heat_ratio] .!= 0, :technology]
+HEAT = tech_data[(tech_data[:,:thermal_eff] .!= 0), :technology]
 P_CHP = intersect(DISP,HEAT)
 
 # Import/Export with National Grid
@@ -51,7 +51,7 @@ heat_ratio = dictzip(tech_data, :technology => :heat_ratio)
 
 for row in eachrow(tech_data)
     af = annuity_factor(row.lifetime, interest_rate)
-    ic_generation_cap[row.technology] = 1000*row.investment_generation * af # Multiplied by 1000
+    ic_generation_cap[row.technology] = row.investment_generation * af # Multiplied by 1000
 
     iccc = row.investment_charge * af
     iccc > 0 && (ic_charging_cap[row.technology] = iccc)
@@ -64,8 +64,10 @@ for row in eachrow(tech_data)
 
     vc[row.technology] = row.vc
 end
+
 ic_generation_cap
-vc
+tech_data.investment_generation
+ic_storage_cap
 
 ### time series ###
 # demand_elec_res = time_series[:,:demand_elec_res] |> Array
@@ -96,20 +98,20 @@ m = Model(Clp.Optimizer)
     G[DISP, T] >= 0
     H[HEAT, T] >= 0
     CU[T] >= 0
-    # D_stor[S,T] >= 0
-    # L_stor[S,T] >= 0
+    D_stor[S,T] >= 0
+    L_stor[S,T] >= 0
 
     # variables investment model
     CAP_G[P] >= 0
-    # CAP_D[S] >= 0
-    # CAP_L[S] >= 0
+    CAP_D[S] >= 0
+    CAP_L[S] >= 0
 end
 
 @objective(m, Min,
     sum(vc[disp] * G[disp,t] for disp in DISP, t in T) * dispatch_scale
     + sum(ic_generation_cap[p] * CAP_G[p] for p in P)
-    # + sum(ic_charging_cap[s] * CAP_D[s] for s in S if haskey(ic_charging_cap, s))
-    # + sum(ic_storage_cap[s] * CAP_L[s] for s in S)
+    + sum(ic_charging_cap[s] * CAP_D[s] for s in S if haskey(ic_charging_cap, s))
+    + sum(ic_storage_cap[s] * CAP_L[s] for s in S)
 )
 
 # Renewable generation
@@ -138,30 +140,35 @@ end
 
 # Cogeneration of CHP plant
 @constraint(m, CoGeneration[chp=P_CHP,t=T],
-G[chp,t] == heat_ratio[chp] * H[chp, t])
+G[chp,t] == 1/heat_ratio[chp] * H[chp, t])
 
 
 ##########
 # Battery
 
-# @constraint(m, MaxCharge[s=S, t=T; haskey(ic_charging_cap, s)],
-#     D_stor[s,t] <= CAP_D[s])
+@constraint(m, MaxCharge[s=S, t=T; haskey(ic_charging_cap, s)],
+    D_stor[s,t] <= CAP_D[s])
 
-# @constraint(m, SymmetricChargingPower[s=S, t=T; !(haskey(ic_charging_cap, s))],
-#     CAP_G[s] == CAP_D[s])
+@constraint(m, SymmetricChargingPower[s=S, t=T; !(haskey(ic_charging_cap, s))],
+    CAP_G[s] == CAP_D[s])
 
-# @constraint(m, MaxLevel[s=S, t=T],
-#     L_stor[s,t] <= CAP_L[s])
+@constraint(m, MaxLevel[s=S, t=T],
+    L_stor[s,t] <= CAP_L[s])
 
-# @constraint(m, StorageLevel[s=S, t=T],
-#     L_stor[s, successor(T,t)]
-#     ==
-#     L_stor[s, t]
-#     + eff_in[s]*D_stor[s,t]
-#     - (1/eff_out[s]) * G[s,t] )
+@constraint(m, StorageLevel[s=S, t=T],
+    L_stor[s, successor(T,t)]
+    ==
+    L_stor[s, t]
+    + eff_in[s]*D_stor[s,t]
+    - (1/eff_out[s]) * G[s,t] )
 
-# @constraint(m,MaxCHP[chp=P_CHP,t=T],
-#     G[chp,t] <= 8000)
+# CONSTRAINT FOR CHP
+# @constraint(m,MaxCHP[chp=P_CHP],
+#     CAP_G[chp] <= 5000)
+
+# @constraint(m,MaxPV[ndisp=NONDISP],
+#      CAP_G[ndisp] <= 26228.18)
+
 
 optimize!(m)
 
@@ -177,8 +184,11 @@ value.(H)
 
 colordict = Dict(
     "pv" => :yellow,
+    "chp_gas" => :dodgerblue1,
+    "chp_bio" => :steelblue3,
+    "chp_diesel" => :dodgerblue4,
     "heatpumps" => :goldenrod1,
-    "chp" => :dodgerblue1,
+    "oil boiler" => :azure4,
     "battery" => :lightgrey,
     "demand" => :darkgrey,
     "curtailment" => :red
