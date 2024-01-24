@@ -2,6 +2,7 @@ using JuMP
 using Clp
 using Plots
 using DataFrames, CSV
+using Gurobi
 include("helper_functions.jl")
 
 # dictzip
@@ -18,7 +19,7 @@ end
 dir = dirname(Base. source_path())
 time_series = CSV.read(joinpath(dir, "data\\timedata_hourly.csv"), DataFrame)
 
-tech_data = CSV.read(joinpath(dir, "data\\technologies.csv"), DataFrame)
+tech_data = CSV.read(joinpath(dir, "data\\technologies_pipeline.csv"), DataFrame)
 
 ### data preprocessing ###
 T_len = time_series.hour |> unique |> length
@@ -31,7 +32,7 @@ S = tech_data[tech_data[!,:investment_storage] .> 0 ,:technology]
 HEAT = tech_data[(tech_data[:,:thermal_eff] .!= 0), :technology]
 P_CHP = intersect(DISP,HEAT)
 H_only = symdiff(HEAT,P_CHP)
-
+H_pump = Vector(["heatpumps"])
 # Import/Export with National Grid
 # Z = unique(zones[:,:zone])
 # P = zones[:,:id] |> Vector
@@ -40,21 +41,32 @@ H_only = symdiff(HEAT,P_CHP)
 annuity_factor(n,r) = r * (1+r)^n / (((1+r)^n)-1)
 
 interest_rate = 0.08
-ic_generation_cap = Dict{String, Float64}()
-ic_charging_cap = Dict{String, Float64}()
-ic_storage_cap = Dict{String, Float64}()
+
+pipeline_emission = 855630/1000 # Pipeline cost per meter
+n_pipeline = 30 # years
+
+# ic_generation_cap = Dict{String, Float64}()
+# ic_charging_cap = Dict{String, Float64}()
+# ic_storage_cap = Dict{String, Float64}()
+ef_elec = Dict{String, Float64}() 
+ef_heat = Dict{String, Float64}()
 eff_in = Dict{String, Float64}()
 eff_out = Dict{String, Float64}()
 vc = Dict{String, Float64}()
 # Heat 
 heat_ratio = dictzip(tech_data, :technology => :heat_ratio)
 
+pipelinecost(i,df,x) = (df[i,"pipeline_m"] * pipeline_emission) / x #* annuity_factor(n_pipeline,interest_rate))/x
 
+pipeline_emm_dict = Dict( "chp_hospital" => pipelinecost(2,tech_data,960.38), "chp_shopping" => pipelinecost(3,tech_data,2732.422), "chp1_2cells"  => pipelinecost(6,tech_data,729.167), "chp2_2cells"  => pipelinecost(5,tech_data,666.667), "chp_4cells"   => pipelinecost(4,tech_data,933.216))
 
 for row in eachrow(tech_data)
     af = annuity_factor(row.lifetime, interest_rate)
-    ic_generation_cap[row.technology] = row.investment_generation * af + row.o_and_m # Multiplied by 1000
-
+    
+    ef_elec[row.technology] = row.emission_elec #* af + row.o_and_m
+    ef_heat[row.technology] = row.emission_heat
+    
+    #ef_storage[row.technology] = row.emission_elec
     iccc = row.investment_charge * af
     iccc > 0 && (ic_charging_cap[row.technology] = iccc)
 
@@ -64,12 +76,13 @@ for row in eachrow(tech_data)
     row.storage_efficiency_in > 0 && (eff_in[row.technology] = row.storage_efficiency_in)
     row.storage_efficiency_out > 0 && (eff_out[row.technology] = row.storage_efficiency_out)
 
-    vc[row.technology] = row.vc
 end
 
-ic_generation_cap
-tech_data.investment_generation
-ic_storage_cap
+
+ef_heat = mergewith(+, ef_heat, pipeline_emm_dict)
+ef_elec
+ef_heat
+eff_in
 
 ### time series ###
 # demand_elec_res = time_series[:,:demand_elec_res] |> Array
@@ -82,6 +95,7 @@ demand_heat = time_series[:,:demand_heat] |> Array
 demand_elec
 demand_heat
 
+
 # Feed in of renewable energy
 availability = Dict(nondisp => time_series[:,nondisp] for nondisp in NONDISP)
 # Storage level at (t+1)
@@ -93,7 +107,8 @@ dispatch_scale = 8760/length(T)
 
 
 ### model ### 
-m = Model(Clp.Optimizer)
+# m = Model(JuMP.Optimizer)
+m = Model(Gurobi.Optimizer)
 
 @variables m begin
     # variables dispatch (include heat)
@@ -104,19 +119,23 @@ m = Model(Clp.Optimizer)
     D_stor[S,T] >= 0
     L_stor[S,T] >= 0
 
+    # GRID[T] >= 0
     # variables investment model
     CAP_G[P] >= 0
     CAP_D[S] >= 0
     CAP_L[S] >= 0
 end
 
+
 @objective(m, Min,
-    sum(vc[disp] * G[disp,t] for disp in DISP, t in T) * dispatch_scale
-    + sum(vc[h] * H[h,t] for h in H_only, t in T) * dispatch_scale
-    + sum(ic_generation_cap[p] * CAP_G[p] for p in P)
-    + sum(ic_charging_cap[s] * CAP_D[s] for s in S if haskey(ic_charging_cap, s))
+    sum(ef_elec[disp] * G[disp,t] for disp in DISP, t in T) 
+    + sum(ef_elec[ndisp] * G[ndisp,t] for ndisp in NONDISP, t in T)
+    #+ sum(ef_elec[h_pump] * G[h_pump,t] for h_pump in H_pump, t in T)
+    + sum(ef_heat[h] * H[h,t] for h in HEAT, t in T) 
+    #+ sum(ic_generation_cap[p] * CAP_G[p] for p in P)
     + sum(ic_storage_cap[s] * CAP_L[s] for s in S)
 )
+
 
 # Renewable generation
 @expression(m, feed_in[ndisp=NONDISP, t=T], availability[ndisp][t]*CAP_G[ndisp])
@@ -127,7 +146,9 @@ end
     - sum(D_stor[s,t] for s in S)
     - CU[t]
     ==
-    demand_elec[t] / dispatch_scale)
+    demand_elec[t] #/ dispatch_scale
+    #+ H["heatpumps",t] / 3.5 # Considering electricity consumption of heat pumps
+    )
 
 # Dispatchable electricity generation must equal installed capacity (CHP)
 @constraint(m, MaxElecGeneration[disp=DISP, t=T],
@@ -135,9 +156,9 @@ end
 
 @constraint(m,HeatBalance[t=T],
     sum(H[ht,t] for ht in HEAT)
-    - HeatDump[t]
-    ==
-    demand_heat[t] / dispatch_scale)
+    >=
+    demand_heat[t] #/ dispatch_scale
+    )
 
 # Generation of heat must equal installed capacity (CHP, heatpumps)
 @constraint(m,MaxHeatGeneration[ht=HEAT,t=T],
@@ -167,12 +188,27 @@ end
     + eff_in[s]*D_stor[s,t]
     - (1/eff_out[s]) * G[s,t] )
 
-# CONSTRAINT FOR CHP
-@constraint(m,MaxCHP[chp=P_CHP],
-    CAP_G[chp] <= 5000) # max is 5MW
 
-# @constraint(m,MaxPV[ndisp=NONDISP],
-#      CAP_G[ndisp] <= 26228.18) # Max is 26MW
+@constraint(m,MaxPV[ndisp=NONDISP],
+    CAP_G[ndisp] <= 26228.18) # Max is 26MW
+
+
+# CONSTRAINT FOR CHP locations based on pipeline network model
+@constraint(m,MaxHospital,
+    CAP_G["chp_hospital"]<= 960.38)
+
+@constraint(m,MaxShopping,
+    CAP_G["chp_shopping"]<= 2732.422)
+
+@constraint(m,Maxchp1_2cells,
+    CAP_G["chp1_2cells"]<= 729.167)
+
+@constraint(m,Maxchp2_2cells,
+    CAP_G["chp2_2cells"]<= 666.667)
+
+@constraint(m,Maxchp_4cells,
+    CAP_G["chp_4cells"]<= 933.216)
+
 
 
 optimize!(m)
@@ -180,7 +216,7 @@ optimize!(m)
 objective_value(m)
 
 value.(CAP_G)
-value.(H)
+
 #################################
 ## Plots
 #################################
@@ -189,17 +225,21 @@ value.(H)
 
 colordict = Dict(
     "pv" => :yellow,
-    "chp_gas" => :dodgerblue1,
-    "chp_bio" => :steelblue3,
-    "chp_diesel" => :dodgerblue4,
-    "heatpumps" => :goldenrod1,
-    "oil_boiler" => :azure4,
-    "battery" => :lightgrey,
+    "chp_hospital" => :dodgerblue1,
+    "chp_shopping" => :midnightblue, # 
+    "chp1_2cells" => :dodgerblue4,
+    "chp2_2cells" => :dodgerblue3, #
+    "chp_4cells" => :steelblue3, # 
+    "heatpumps" => :gold2, # 
+    "gas_boiler" => :slateblue2, 
+    "battery" => :lightseagreen,
     "demand" => :darkgrey,
     "curtailment" => :red,
-    "heat_dump" => :red,
+    # "heat_dump" => :red,
 )
 
+
+i="E1" # Define scenario number to store output
 
 ######## plot electricity balance ###########
 
@@ -215,6 +255,12 @@ result_generation = vcat(result_feed_in, result_G)
 result_demand = vcat(result_charging, result_CU, df_demand)
 
 table_gen = unstack(result_generation, :hour, :technology, :value,combine=sum)
+
+# OUTPUT to EXCEL
+str = "results_csv\\" * i * "Hourly_Electricity_Gen.csv"
+
+CSV.write(str,  table_gen)
+
 table_gen = table_gen[!,[NONDISP..., DISP...]]
 labels = names(table_gen) |> permutedims
 colors = [colordict[tech] for tech in labels]
@@ -229,6 +275,11 @@ balance_plot = areaplot(
 )
 
 table_dem = unstack(result_demand, :hour, :technology, :value)
+
+# OUTPUT to EXCEL
+str = "results_csv\\" * i * "Hourly_Electricity_Demand.csv"
+CSV.write(str,  table_dem)
+
 table_dem = table_dem[!,["demand", S...,"curtailment"]]
 labels2 = names(table_dem) |> permutedims
 colors2 = [colordict[tech] for tech in labels2]
@@ -246,16 +297,19 @@ areaplot!(
 
 hline!(balance_plot, [0], color=:black, label="", width=2)
 
+str = "results\\" * i * "Dispatch_Electricity.pdf"
+savefig(str)
+
 ######## plot heat balance ###########
 
 result_H = get_result(H, [:technology, :hour])
 
-result_HeatDump = get_result(HeatDump, [:hour])
-result_HeatDump[!,:technology] .= "heat_dump"
+#result_HeatDump = get_result(HeatDump, [:hour])
+#result_HeatDump[!,:technology] .= "heat_dump"
 
 df_demand_heat = DataFrame(hour=T, technology="demand", value=demand_heat)
 
-result_demand = vcat(result_charging, result_HeatDump, df_demand)
+result_demand = vcat(result_charging, df_demand)
 
 
 result_H.technology
@@ -263,6 +317,11 @@ table_gen = unstack(result_H, :hour, :technology, :value)
 table_gen = table_gen[!,[P_CHP..., H_only...]]
 
 table_gen = table_gen[!,[HEAT...]]
+
+# OUTPUT to EXCEL
+str = "results_csv\\" * i * "Hourly_Heat_Gen.csv"
+CSV.write(str,  table_gen)
+
 labels = names(table_gen) |> permutedims
 colors = [colordict[tech] for tech in labels]
 data_gen = Array(table_gen)
@@ -276,8 +335,8 @@ balance_plot = areaplot(
 )
 
 # Displaying demand
-
 table_dem = unstack(df_demand_heat, :hour, :technology, :value)
+table_dem = table_dem[!,["demand"]]
 labels2 = names(table_dem) |> permutedims
 colors2 = [colordict[tech] for tech in labels2]
 replace!(labels2, [item => "" for item in intersect(labels2, labels)]...)
@@ -294,7 +353,8 @@ areaplot!(
 
 hline!(balance_plot, [0], color=:black, label="", width=2)
 
-
+str = "results\\" * i * "Dispatch_Heat.pdf"
+savefig(str)
 
 
 #################################
@@ -308,42 +368,45 @@ p1 = bar(
     y,
     leg=false,
     title="Installed power generation",
-    ylabel="GW",
+    ylabel="MW",
     guidefontsize=8,
     rotation=45
 )
 
-df_installed_charge = get_result(CAP_D, [:technology])
-x = df_installed_charge[!,:technology]
-y = df_installed_charge[!,:value] ./ 1000
-p2 = bar(
-    x,
-    y,
-    leg=false,
-    title="Installed power charging",
-    ylim=ylims(p1),
-    rotation=45
-)
+# df_installed_charge = get_result(CAP_D, [:technology])
+# x = df_installed_charge[!,:technology]
+# y = df_installed_charge[!,:value] ./ 1000
+# p2 = bar(
+#     x,
+#     y,
+#     leg=false,
+#     title="Installed power charging",
+#     ylim=ylims(p1),
+#     rotation=45
+# )
 
-df_installed_storage = get_result(CAP_L, [:technology])
-x = df_installed_storage[!,:technology]
-y = df_installed_storage[!,:value] ./ 1e6
+# df_installed_storage = get_result(CAP_L, [:technology])
+# x = df_installed_storage[!,:technology]
+# y = df_installed_storage[!,:value] ./ 1e6
 
-p3 = bar(
-    x,
-    y,
-    leg=false,
-    title="Installed storage capacity",
-    ylabel="TWh",
-    guidefontsize=8,
-    rotation=45
-)
+# p3 = bar(
+#     x,
+#     y,
+#     leg=false,
+#     title="Installed storage capacity",
+#     ylabel="TWh",
+#     guidefontsize=8,
+#     rotation=45
+# )
 
 plot(
     p1,
-    p2,
-    p3,
+    # p2,
+    #p3,
     layout=(1,3),
     titlefontsize=8,
     tickfontsize=6
 )
+
+str = "results\\" * i * "Power_generation.pdf"
+savefig(str)

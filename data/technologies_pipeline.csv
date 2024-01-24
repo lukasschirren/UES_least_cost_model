@@ -1,9 +1,10 @@
-technology,dispatchable,o_and_m,vc,lifetime,emission,investment_generation,investment_charge,investment_storage,storage_efficiency_in,storage_efficiency_out,heat_ratio,thermal_eff,electrical eff,pipeline_m
-pv,0,0,0,25,0.04,785.4,-1,-1,-1,-1,0,0,0,0
-chp_hospital,1,52.3,0.082222222,25,0.59,1046,-1,-1,-1,-1,0.7,0.27,0.45,1100
-chp_shopping,1,52.3,0.082222222,25,0.59,1046,-1,-1,-1,-1,0.7,0.27,0.45,2500
-chp1_2cells,1,52.3,0.082222222,25,0.59,1046,-1,-1,-1,-1,0.7,0.27,0.45,1441.421356
-chp2_2cells,1,52.3,0.082222222,25,0.59,1046,-1,-1,-1,-1,0.7,0.27,0.45,1400
-chp_4cells,1,52.3,0.082222222,25,0.59,1046,-1,-1,-1,-1,0.7,0.27,0.45,2200
-heatpumps,-1,3,0.942,25,-1,619.65,-1,-1,-1,-1,0,3.5,0.3,0
-battery,1,36.89,0,25,-1,1,0,1475.46,0.86,0.86,0,0,0,0
+technology,dispatchable,o_and_m,vc,lifetime,emission_elec,emission_heat,investment_generation,investment_charge,investment_storage,storage_efficiency_in,storage_efficiency_out,heat_ratio,thermal_eff,electrical eff,pipeline_m
+pv,0,0,0,25,40,0,785.4,-1,-1,-1,-1,0,0,0,0
+chp_hospital,1,52.3,0.082222222,25,590,510,1046,-1,-1,-1,-1,0.7,0.27,0.45,1100
+chp_shopping,1,52.3,0.082222222,25,590,510,1046,-1,-1,-1,-1,0.7,0.27,0.45,2500
+chp1_2cells,1,52.3,0.082222222,25,590,510,1046,-1,-1,-1,-1,0.7,0.27,0.45,1441.421356
+chp2_2cells,1,52.3,0.082222222,25,590,510,1046,-1,-1,-1,-1,0.7,0.27,0.45,1400
+chp_4cells,1,52.3,0.082222222,25,590,510,1046,-1,-1,-1,-1,0.7,0.27,0.45,2200
+gas_boiler,-1,6.5,0.11,25,310,240,259.5,-1,-1,-1,-1,0,0.9,0,0
+heatpumps,-1,3,0.942,25,100,190,619.65,-1,-1,-1,-1,0,3.5,0.3,0
+battery,1,36.89,0,25,70,0,1,0,1475.46,0.86,0.86,0,0,0,0

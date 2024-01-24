@@ -259,7 +259,7 @@ table_gen = unstack(result_generation, :hour, :technology, :value,combine=sum)
 # OUTPUT to EXCEL
 str = "results_csv\\" * i * "Hourly_Electricity_Gen.csv"
 
-CSV.write("results_csv\\test",  table_gen)
+CSV.write(str,  table_gen)
 
 table_gen = table_gen[!,[NONDISP..., DISP...]]
 labels = names(table_gen) |> permutedims
@@ -278,6 +278,7 @@ table_dem = unstack(result_demand, :hour, :technology, :value)
 
 # OUTPUT to EXCEL
 str = "results_csv\\" * i * "Hourly_Electricity_Demand.csv"
+CSV.write(str,  table_dem)
 
 table_dem = table_dem[!,["demand", S...,"curtailment"]]
 labels2 = names(table_dem) |> permutedims
@@ -318,6 +319,7 @@ table_gen = table_gen[!,[P_CHP..., H_only...]]
 table_gen = table_gen[!,[HEAT...]]
 
 # OUTPUT to EXCEL
+
 str = "results_csv\\" * i * "Hourly_Heat_Gen.csv"
 CSV.write(str,  table_gen)
 
