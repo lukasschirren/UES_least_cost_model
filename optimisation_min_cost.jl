@@ -19,7 +19,7 @@ end
 dir = dirname(Base. source_path())
 time_series = CSV.read(joinpath(dir, "data\\timedata_hourly.csv"), DataFrame)
 
-tech_data = CSV.read(joinpath(dir, "data\\technologies.csv"), DataFrame)
+tech_data = CSV.read(joinpath(dir, "data\\technologies_pipeline.csv"), DataFrame)
 
 ### data preprocessing ###
 T_len = time_series.hour |> unique |> length
@@ -41,6 +41,9 @@ H_only = symdiff(HEAT,P_CHP)
 annuity_factor(n,r) = r * (1+r)^n / (((1+r)^n)-1)
 
 interest_rate = 0.08
+
+pipeline_cost = 1000 # Pipeline cost per meter
+
 ic_generation_cap = Dict{String, Float64}()
 ic_charging_cap = Dict{String, Float64}()
 ic_storage_cap = Dict{String, Float64}()
@@ -92,9 +95,9 @@ successor(arr, x) = (x == length(arr)) ? 1 : x + 1
 dispatch_scale = 8760/length(T)
 
 
-
 ### model ### 
-m = Model(Clp.Optimizer)
+# m = Model(JuMP.Optimizer)
+m = Model(Gurobi.Optimizer)
 
 @variables m begin
     # variables dispatch (include heat)
@@ -129,7 +132,9 @@ end
     - sum(D_stor[s,t] for s in S)
     - CU[t]
     ==
-    demand_elec[t] / dispatch_scale)
+    demand_elec[t] / dispatch_scale
+    # + H["heatpump",t] / 0.8 # Considering
+    )
 
 # Dispatchable electricity generation must equal installed capacity (CHP)
 @constraint(m, MaxElecGeneration[disp=DISP, t=T],
@@ -169,6 +174,9 @@ end
     - (1/eff_out[s]) * G[s,t] )
 
 # CONSTRAINT FOR CHP
+@constraint(m,MaxHospital,
+    CAP_G[chp] <= 3000 for chp in P_CHP,if CAP_G[CAP_G.== "chp_hospital"] )
+
 @constraint(m,MaxCHP,
     sum(CAP_G[chp] for chp in P_CHP) <= 3800) #*cells
 

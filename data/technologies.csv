@@ -1,8 +1,0 @@
-technology,dispatchable,o_and_m,vc,lifetime,investment_generation,investment_charge,investment_storage,storage_efficiency_in,storage_efficiency_out,heat_ratio,thermal_eff,electrical eff,pipelines
-pv,0,94.248,0,25,785.4,-1,-1,-1,-1,0,0,0,0
-chp_gas,1,52.3,0.082222222,25,1046,-1,-1,-1,-1,0.7,0.27,0.45,0
-chp_bio,1,164.745,0.123333333,25,3661,-1,-1,-1,-1,1,0.6753,0.3,0
-chp_biodiesel,1,79.1,0.105714286,25,1130,-1,-1,-1,-1,2.6,0.35,0.35,0
-heatpumps,-1,8,0.942,20,619.65,-1,-1,-1,-1,0,0.8,0.3,0
-gas_boiler,-1,6.5,0.11,25,259.5,-1,-1,-1,-1,0,0.9,0,0
-battery,1,36.89,0,25,1,0,1475.46,0.86,0.86,0,0,0,0
