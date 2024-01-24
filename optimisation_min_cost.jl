@@ -139,8 +139,8 @@ end
     - sum(D_stor[s,t] for s in S)
     - CU[t]
     ==
-    demand_elec[t] / dispatch_scale
-    # + H["heatpump",t] / 0.8 # Considering
+    demand_elec[t] #/ dispatch_scale
+    + H["heatpumps",t] / 3.5 # Considering electricity consumption of heat pumps
     )
 
 # Dispatchable electricity generation must equal installed capacity (CHP)
@@ -149,8 +149,9 @@ end
 
 @constraint(m,HeatBalance[t=T],
     sum(H[ht,t] for ht in HEAT)
-    >=
-    demand_heat[t] / dispatch_scale)
+    ==
+    demand_heat[t] #/ dispatch_scale
+    )
 
 # Generation of heat must equal installed capacity (CHP, heatpumps)
 @constraint(m,MaxHeatGeneration[ht=HEAT,t=T],
@@ -180,18 +181,28 @@ end
     + eff_in[s]*D_stor[s,t]
     - (1/eff_out[s]) * G[s,t] )
 
-# CONSTRAINT FOR CHP
-# @constraint(m,MaxHospital,
-#    CAP_G[chp] <= 3000 for chp in P_CHP,if CAP_G[CAP_G.== "chp_hospital"] )
-
-@constraint(m,MaxCHP,
-    sum(CAP_G[chp] for chp in P_CHP) <= 3800) #*cells
 
 @constraint(m,MaxPV[ndisp=NONDISP],
-     CAP_G[ndisp] <= 26228.18) # Max is 26MW
+    CAP_G[ndisp] <= 26228.18) # Max is 26MW
 
-# @constraint(m, Pipeline[chp=P_CHP],
-#   )
+
+# CONSTRAINT FOR CHP locations based on pipeline network model
+@constraint(m,MaxHospital,
+    CAP_G["chp_hospital"]<= 769.0068)
+
+# @constraint(m,MaxShopping,
+#     CAP_G["chp_shopping"]<= 2321.447)
+
+@constraint(m,Maxchp1_2cells,
+    CAP_G["chp1_2cells"]<= 690.411)
+
+# @constraint(m,Maxchp2_2cells,
+#     CAP_G["chp2_2cells"]<= 728.7671)
+
+# @constraint(m,Maxchp_4cells,
+#     CAP_G["chp_4cells"]<= 859.069)
+
+
 
 optimize!(m)
 
@@ -208,12 +219,12 @@ value.(H)
 colordict = Dict(
     "pv" => :yellow,
     "chp_hospital" => :dodgerblue1,
-    "chp_shopping" => :steelblue3,
+    # "chp_shopping" => :midnightblue, # chp_shopping,1,52.3,0.082222222,25,0.59,1046,-1,-1,-1,-1,0.7,0.27,0.45,2341.421
     "chp1_2cells" => :dodgerblue4,
-    "chp2_2cells" => :dodgerblue4,
-    "chp_4cells" => :dodgerblue4,
-    "heatpumps" => :goldenrod1,
-    "gas_boiler" => :slateblue2,
+    # "chp2_2cells" => :dodgerblue3, #chp2_2cells,1,52.3,0.082222222,25,0.59,1046,-1,-1,-1,-1,0.7,0.27,0.45,1600
+    # "chp_4cells" => :steelblue3, # chp_4cells,1,52.3,0.082222222,25,0.59,1046,-1,-1,-1,-1,0.7,0.27,0.45,2200
+    "heatpumps" => :yellow, # 
+    # "gas_boiler" => :slateblue2, #gas_boiler,-1,6.5,0.11,25,0.31,259.5,-1,-1,-1,-1,0,0.9,0,0
     "battery" => :lightseagreen,
     "demand" => :darkgrey,
     "curtailment" => :red,
@@ -298,7 +309,6 @@ balance_plot = areaplot(
 )
 
 # Displaying demand
-
 table_dem = unstack(df_demand_heat, :hour, :technology, :value)
 table_dem = table_dem[!,["demand"]]
 labels2 = names(table_dem) |> permutedims
@@ -331,14 +341,15 @@ p1 = bar(
     y,
     leg=false,
     title="Installed power generation",
-    ylabel="GW",
+    ylabel="MW",
     guidefontsize=8,
     rotation=45
 )
 
 # df_installed_charge = get_result(CAP_D, [:technology])
 # x = df_installed_charge[!,:technology]
-# y = df_installed_charge[!,:value] ./ 1000
+# y = df_installed_ch
+arge[!,:value] ./ 1000
 # p2 = bar(
 #     x,
 #     y,
@@ -360,13 +371,15 @@ p1 = bar(
 #     ylabel="TWh",
 #     guidefontsize=8,
 #     rotation=45
-#)
+# )
 
 plot(
     p1,
     # p2,
-    # p3,
+    #p3,
     layout=(1,3),
     titlefontsize=8,
     tickfontsize=6
 )
+
+savefig("results\\Power_generation.pdf")
