@@ -43,6 +43,9 @@ annuity_factor(n,r) = r * (1+r)^n / (((1+r)^n)-1)
 interest_rate = 0.08
 
 pipeline_cost = 1000 # Pipeline cost per meter
+n_pipeline = 30 # years
+
+
 
 ic_generation_cap = Dict{String, Float64}()
 ic_charging_cap = Dict{String, Float64}()
@@ -57,7 +60,11 @@ heat_ratio = dictzip(tech_data, :technology => :heat_ratio)
 
 for row in eachrow(tech_data)
     af = annuity_factor(row.lifetime, interest_rate)
-    ic_generation_cap[row.technology] = row.investment_generation * af + row.o_and_m # Multiplied by 1000
+    
+    ic_generation_cap[row.technology] = row.investment_generation * af + row.o_and_m + row.pipeline_m * pipeline_cost * annuity_factor(n_pipeline,interest_rate)# Invetment costs plus O&M costs
+    # # Costs for pipeline over lifetime
+
+
 
     iccc = row.investment_charge * af
     iccc > 0 && (ic_charging_cap[row.technology] = iccc)
@@ -174,8 +181,8 @@ end
     - (1/eff_out[s]) * G[s,t] )
 
 # CONSTRAINT FOR CHP
-@constraint(m,MaxHospital,
-    CAP_G[chp] <= 3000 for chp in P_CHP,if CAP_G[CAP_G.== "chp_hospital"] )
+# @constraint(m,MaxHospital,
+#    CAP_G[chp] <= 3000 for chp in P_CHP,if CAP_G[CAP_G.== "chp_hospital"] )
 
 @constraint(m,MaxCHP,
     sum(CAP_G[chp] for chp in P_CHP) <= 3800) #*cells
@@ -200,9 +207,11 @@ value.(H)
 
 colordict = Dict(
     "pv" => :yellow,
-    "chp_gas" => :dodgerblue1,
-    "chp_bio" => :steelblue3,
-    "chp_biodiesel" => :dodgerblue4,
+    "chp_hospital" => :dodgerblue1,
+    "chp_shopping" => :steelblue3,
+    "chp1_2cells" => :dodgerblue4,
+    "chp2_2cells" => :dodgerblue4,
+    "chp_4cells" => :dodgerblue4,
     "heatpumps" => :goldenrod1,
     "gas_boiler" => :slateblue2,
     "battery" => :lightseagreen,
@@ -257,6 +266,8 @@ areaplot!(
 
 hline!(balance_plot, [0], color=:black, label="", width=2)
 
+savefig("results\\Dispatch_Electricity.pdf")
+
 ######## plot heat balance ###########
 
 result_H = get_result(H, [:technology, :hour])
@@ -306,7 +317,7 @@ areaplot!(
 
 hline!(balance_plot, [0], color=:black, label="", width=2)
 
-
+savefig("results\\Dispatch_Heat.pdf")
 
 
 #################################
@@ -349,7 +360,7 @@ p1 = bar(
 #     ylabel="TWh",
 #     guidefontsize=8,
 #     rotation=45
-)
+#)
 
 plot(
     p1,
