@@ -17,7 +17,7 @@ end
 
 
 dir = dirname(Base. source_path())
-time_series = CSV.read(joinpath(dir, "data\\timedata_hourly.csv"), DataFrame)
+time_series = CSV.read(joinpath(dir, "data\\timedata_monthly.csv"), DataFrame)
 
 tech_data = CSV.read(joinpath(dir, "data\\technologies_pipeline.csv"), DataFrame)
 
@@ -128,12 +128,13 @@ end
 
 
 @objective(m, Min,
-    sum(ef_elec[disp] * G[disp,t] for disp in DISP, t in T) 
-    + sum(ef_elec[ndisp] * G[ndisp,t] for ndisp in NONDISP, t in T)
+    sum(ef_elec[p] * G[p,t] for p in P, t in T) * dispatch_scale
+    + sum(ef_heat[h] * H[h,t] for h in HEAT, t in T) *dispatch_scale
+    + sum(ef_elec[p] * CAP_G[p] for p in P)
+    + sum(ef_heat[h] * CAP_G[h] for h in H_only)
+    #+ sum(ef_elec[ndisp] * G[ndisp,t] for ndisp in NONDISP, t in T) * dispatch_scale
     #+ sum(ef_elec[h_pump] * G[h_pump,t] for h_pump in H_pump, t in T)
-    + sum(ef_heat[h] * H[h,t] for h in HEAT, t in T) 
-    #+ sum(ic_generation_cap[p] * CAP_G[p] for p in P)
-    + sum(ic_storage_cap[s] * CAP_L[s] for s in S)
+    #+ sum(ic_storage_cap[s] * CAP_L[s] for s in S)
 )
 
 
@@ -146,8 +147,8 @@ end
     - sum(D_stor[s,t] for s in S)
     - CU[t]
     ==
-    demand_elec[t] #/ dispatch_scale
-    #+ H["heatpumps",t] / 3.5 # Considering electricity consumption of heat pumps
+    demand_elec[t] / dispatch_scale
+    + H["heatpumps",t] / 3.5 # Considering electricity consumption of heat pumps
     )
 
 # Dispatchable electricity generation must equal installed capacity (CHP)
@@ -156,8 +157,8 @@ end
 
 @constraint(m,HeatBalance[t=T],
     sum(H[ht,t] for ht in HEAT)
-    >=
-    demand_heat[t] #/ dispatch_scale
+    ==
+    demand_heat[t] / dispatch_scale
     )
 
 # Generation of heat must equal installed capacity (CHP, heatpumps)
@@ -257,7 +258,7 @@ result_demand = vcat(result_charging, result_CU, df_demand)
 table_gen = unstack(result_generation, :hour, :technology, :value,combine=sum)
 
 # OUTPUT to EXCEL
-str = "results_csv\\" * i * "Hourly_Electricity_Gen.csv"
+str = "results_csv_emission\\" * i * "Hourly_Electricity_Gen.csv"
 
 CSV.write(str,  table_gen)
 
@@ -276,8 +277,12 @@ balance_plot = areaplot(
 
 table_dem = unstack(result_demand, :hour, :technology, :value)
 
+################
+table_dem[:,"demand"] = table_dem[:,"demand"] / dispatch_scale
+###############
+
 # OUTPUT to EXCEL
-str = "results_csv\\" * i * "Hourly_Electricity_Demand.csv"
+str = "results_csv_emission\\" * i * "Hourly_Electricity_Demand.csv"
 CSV.write(str,  table_dem)
 
 table_dem = table_dem[!,["demand", S...,"curtailment"]]
@@ -297,7 +302,7 @@ areaplot!(
 
 hline!(balance_plot, [0], color=:black, label="", width=2)
 
-str = "results\\" * i * "Dispatch_Electricity.pdf"
+str = "results_emission\\" * i * "Dispatch_Electricity.pdf"
 savefig(str)
 
 ######## plot heat balance ###########
@@ -319,7 +324,7 @@ table_gen = table_gen[!,[P_CHP..., H_only...]]
 table_gen = table_gen[!,[HEAT...]]
 
 # OUTPUT to EXCEL
-str = "results_csv\\" * i * "Hourly_Heat_Gen.csv"
+str = "results_csv_emission\\" * i * "Hourly_Heat_Gen.csv"
 CSV.write(str,  table_gen)
 
 labels = names(table_gen) |> permutedims
@@ -336,6 +341,11 @@ balance_plot = areaplot(
 
 # Displaying demand
 table_dem = unstack(df_demand_heat, :hour, :technology, :value)
+
+################
+table_dem[:,"demand"] = table_dem[:,"demand"] / dispatch_scale
+###############
+
 table_dem = table_dem[!,["demand"]]
 labels2 = names(table_dem) |> permutedims
 colors2 = [colordict[tech] for tech in labels2]
@@ -353,7 +363,7 @@ areaplot!(
 
 hline!(balance_plot, [0], color=:black, label="", width=2)
 
-str = "results\\" * i * "Dispatch_Heat.pdf"
+str = "results_emission\\" * i * "Dispatch_Heat.pdf"
 savefig(str)
 
 
@@ -408,5 +418,5 @@ plot(
     tickfontsize=6
 )
 
-str = "results\\" * i * "Power_generation.pdf"
+str = "results_emission\\" * i * "Power_generation.pdf"
 savefig(str)
