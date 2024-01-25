@@ -114,12 +114,14 @@ m = Model(Gurobi.Optimizer)
     # variables dispatch (include heat)
     G[P, T] >= 0
     H[HEAT, T] >= 0
-    CU[T] >= 0
+    #CU[T] >= 0
     HeatDump[T] >= 0
     D_stor[S,T] >= 0
     L_stor[S,T] >= 0
 
-    # GRID[T] >= 0
+    ###############
+    IM[T] >= 0
+    EX[T] >= 0
     # variables investment model
     CAP_G[P] >= 0
     CAP_D[S] >= 0
@@ -135,6 +137,8 @@ end
     #+ sum(ic_charging_cap[s] * CAP_D[s] for s in S if haskey(ic_charging_cap, s))
     + sum(ic_storage_cap[s] * CAP_L[s] for s in S)
     #- sum(CU[t] *0.18 for t in T)
+    + sum(IM[t] * 0.38 for t in T)
+    - sum(EX[t] * 0.18 for t in T)
 ) 
 
 # Renewable generation
@@ -144,9 +148,13 @@ end
     sum(G[disp,t] for disp in DISP)
     + sum(feed_in[ndisp,t] for ndisp in NONDISP)
     - sum(D_stor[s,t] for s in S)
-    - CU[t]
+    #- CU[t]
+    #########
+    + IM[t]
     ==
     demand_elec[t] / dispatch_scale
+    ###########
+    + EX[t]
     + H["heatpumps",t] / 3.5 # Considering electricity consumption of heat pumps
     )
 
@@ -231,15 +239,16 @@ colordict = Dict(
     "chp2_2cells" => :dodgerblue3, #
     "chp_4cells" => :steelblue3, # 
     "heatpumps" => :gold2, # 
-    # "gas_boiler" => :slateblue2, 
+    "gas_boiler" => :slateblue2, 
     "battery" => :lightseagreen,
     "demand" => :darkgrey,
     "curtailment" => :red,
-    # "heat_dump" => :red,
+    "IM" => :green,
+    "EX"  => :green
 )
 
 
-i="3M" # Define scenario number to store output
+i="4M_GRID_" # Define scenario number to store output
 
 ######## plot electricity balance ###########
 
@@ -247,12 +256,21 @@ result_G = get_result(G, [:technology, :hour])
 result_feed_in = get_result(feed_in, [:technology, :hour])
 
 result_charging = get_result(D_stor, [:technology, :hour])
-result_CU = get_result(CU, [:hour])
-result_CU[!,:technology] .= "curtailment"
+# result_CU = get_result(CU, [:hour])
+# result_CU[!,:technology] .= "curtailment"
+
+result_IM = get_result(IM, [:hour])
+result_IM[!,:technology] .= "IM"
+result_EX = get_result(EX, [:hour])
+result_EX[!,:technology] .= "EX"
+
 df_demand = DataFrame(hour=T, technology="demand", value=demand_elec)
 
-result_generation = vcat(result_feed_in, result_G)
-result_demand = vcat(result_charging, result_CU, df_demand)
+result_generation = vcat(result_feed_in, result_G,result_IM)
+
+# result_demand = vcat(result_charging, result_CU, df_demand)
+
+result_demand = vcat(result_charging, result_EX, df_demand)
 
 table_gen = unstack(result_generation, :hour, :technology, :value,combine=sum)
 
@@ -260,7 +278,7 @@ table_gen = unstack(result_generation, :hour, :technology, :value,combine=sum)
 str = "results_csv_monthly\\" * i * "Hourly_Electricity_Gen.csv"
 CSV.write(str,  table_gen)
 
-table_gen = table_gen[!,[NONDISP..., DISP...]]
+table_gen = table_gen[!,[NONDISP..., DISP...,"IM"]]
 labels = names(table_gen) |> permutedims
 colors = [colordict[tech] for tech in labels]
 data_gen = Array(table_gen)
@@ -280,7 +298,9 @@ table_dem = unstack(result_demand, :hour, :technology, :value)
 table_dem[:,"demand"] = table_dem[:,"demand"] / dispatch_scale
 ###############
 
-table_dem = table_dem[!,["demand", S...,"curtailment"]]
+# table_dem = table_dem[!,["demand", S...,"curtailment"]]
+table_dem = table_dem[!,["demand", S...,"EX"]]
+
 labels2 = names(table_dem) |> permutedims
 colors2 = [colordict[tech] for tech in labels2]
 replace!(labels2, [item => "" for item in intersect(labels2, labels)]...)
@@ -295,6 +315,9 @@ areaplot!(
     data_dem,
     label=labels2,
     color=colors2,
+    xticks = (0:1:12, string.(0:1:12)),
+    xlabel="Month",
+    ylabel="kW",
     width=0,
     leg=:outertopright
 )
@@ -343,6 +366,7 @@ balance_plot = areaplot(
 table_dem = unstack(df_demand_heat, :hour, :technology, :value)
 
 ################
+
 table_dem[:,"demand"] = table_dem[:,"demand"] / dispatch_scale
 ###############
 
@@ -357,6 +381,9 @@ areaplot!(
     data_dem,
     label=labels2,
     color=colors2,
+    xticks = (0:1:12, string.(0:1:12)),
+    xlabel="Month",
+    ylabel="kW",
     width=0,
     leg=:outertopright
 )
@@ -378,8 +405,7 @@ p1 = bar(
     x,
     y,
     leg=false,
-    title="Installed power generation",
-    ylabel="MW",
+    ylabel="kW",
     guidefontsize=8,
     rotation=45
 )

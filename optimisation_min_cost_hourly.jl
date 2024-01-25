@@ -209,7 +209,8 @@ end
 @constraint(m,Maxchp_4cells,
     CAP_G["chp_4cells"]<= 933.216)
 
-
+# @constraint(m,LimitEmission,
+    # )
 
 optimize!(m)
 
@@ -237,6 +238,7 @@ colordict = Dict(
     "curtailment" => :red,
     # "heat_dump" => :red,
 )
+
 
 
 i="3" # Define scenario number to store output
@@ -292,6 +294,10 @@ areaplot!(
     data_dem,
     label=labels2,
     color=colors2,
+    xticks = (0:2000:8760, string.(0:2000:8760)),
+    #yticks = (0:500:1500, string.(0:500:1500)),
+    xlabel="Hour",
+    ylabel="kW",
     width=0,
     leg=:outertopright
 )
@@ -352,6 +358,9 @@ areaplot!(
     data_dem,
     label=labels2,
     color=colors2,
+    xticks = (0:2000:8760, string.(0:2000:8760)),
+    xlabel="Hour",
+    ylabel="kW",
     width=0,
     leg=:outertopright
 )
@@ -373,8 +382,7 @@ p1 = bar(
     x,
     y,
     leg=false,
-    title="Installed power generation",
-    ylabel="MW",
+    ylabel="kW",
     guidefontsize=8,
     rotation=45
 )

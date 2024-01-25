@@ -17,7 +17,7 @@ end
 
 
 dir = dirname(Base. source_path())
-time_series = CSV.read(joinpath(dir, "data\\timedata_monthly.csv"), DataFrame)
+time_series = CSV.read(joinpath(dir, "data\\timedata_hourly.csv"), DataFrame)
 
 tech_data = CSV.read(joinpath(dir, "data\\technologies_pipeline.csv"), DataFrame)
 
@@ -119,7 +119,6 @@ m = Model(Gurobi.Optimizer)
     D_stor[S,T] >= 0
     L_stor[S,T] >= 0
 
-    ###############
     IM[T] >= 0
     EX[T] >= 0
     # variables investment model
@@ -134,8 +133,8 @@ end
     + sum(ef_heat[h] * H[h,t] for h in HEAT, t in T) *dispatch_scale
     + sum(ef_elec[p] * CAP_G[p] for p in P)
     + sum(ef_heat[h] * CAP_G[h] for h in HEAT)
-    + sum(IM[t] * 50 for t in T)
-    - sum(EX[t] * 50 for t in T)
+    + sum(IM[t] * 0.29 for t in T)
+    - sum(EX[t] * 0.18 for t in T)
     #+ sum(ef_elec[ndisp] * G[ndisp,t] for ndisp in NONDISP, t in T) * dispatch_scale
     #+ sum(ef_elec[h_pump] * G[h_pump,t] for h_pump in H_pump, t in T)
     #+ sum(ic_storage_cap[s] * CAP_L[s] for s in S)
@@ -149,12 +148,10 @@ end
     sum(G[disp,t] for disp in DISP)
     + sum(feed_in[ndisp,t] for ndisp in NONDISP)
     - sum(D_stor[s,t] for s in S)
-    # - CU[t]
-    #########
+    - CU[t]
     + IM[t]
     ==
     demand_elec[t] / dispatch_scale
-    #########
     + EX[t]
     + H["heatpumps",t] / 3.5 # Considering electricity consumption of heat pumps
     )
@@ -243,14 +240,14 @@ colordict = Dict(
     "gas_boiler" => :slateblue2, 
     "battery" => :lightseagreen,
     "demand" => :darkgrey,
-    # "curtailment" => :red,
+    "curtailment" => :red,
     "IM" => :green,
     "EX"  => :green
     # "heat_dump" => :red,
 )
 
 
-i="E2_GRID_" # Define scenario number to store output
+i="HourlyGRID_1" # Define scenario number to store output
 
 ######## plot electricity balance ###########
 
@@ -258,21 +255,12 @@ result_G = get_result(G, [:technology, :hour])
 result_feed_in = get_result(feed_in, [:technology, :hour])
 
 result_charging = get_result(D_stor, [:technology, :hour])
-# result_CU = get_result(CU, [:hour])
-# result_CU[!,:technology] .= "curtailment"
-
-result_IM = get_result(IM, [:hour])
-result_IM[!,:technology] .= "IM"
-result_EX = get_result(EX, [:hour])
-result_EX[!,:technology] .= "EX"
-
+result_CU = get_result(CU, [:hour])
+result_CU[!,:technology] .= "curtailment"
 df_demand = DataFrame(hour=T, technology="demand", value=demand_elec)
 
-
-# result_generation = vcat(result_feed_in, result_G)
-# result_demand = vcat(result_charging, result_CU, df_demand)
-result_generation = vcat(result_feed_in, result_G, result_IM)
-result_demand = vcat(result_charging,result_EX, df_demand)
+result_generation = vcat(result_feed_in, result_G)
+result_demand = vcat(result_charging, result_CU, df_demand)
 
 table_gen = unstack(result_generation, :hour, :technology, :value,combine=sum)
 
@@ -296,15 +284,12 @@ balance_plot = areaplot(
 
 table_dem = unstack(result_demand, :hour, :technology, :value)
 
-################
-table_dem[:,"demand"] = table_dem[:,"demand"] / dispatch_scale
-###############
 
 # OUTPUT to EXCEL
 str = "results_csv_emission\\" * i * "Hourly_Electricity_Demand.csv"
 CSV.write(str,  table_dem)
 
-table_dem = table_dem[!,["demand", S...,"EX"]]
+table_dem = table_dem[!,["demand", S...,"curtailment"]]
 labels2 = names(table_dem) |> permutedims
 colors2 = [colordict[tech] for tech in labels2]
 replace!(labels2, [item => "" for item in intersect(labels2, labels)]...)
@@ -315,8 +300,8 @@ areaplot!(
     data_dem,
     label=labels2,
     color=colors2,
-    xticks = (0:1:12, string.(0:1:12)),
-    xlabel="Month",
+    xticks = (0:2000:8760, string.(0:2000:8760)),
+    xlabel="Hour",
     ylabel="kW",
     width=0,
     leg=:outertopright
@@ -364,9 +349,7 @@ balance_plot = areaplot(
 # Displaying demand
 table_dem = unstack(df_demand_heat, :hour, :technology, :value)
 
-################
-table_dem[:,"demand"] = table_dem[:,"demand"] / dispatch_scale
-###############
+
 
 table_dem = table_dem[!,["demand"]]
 labels2 = names(table_dem) |> permutedims
@@ -379,8 +362,8 @@ areaplot!(
     data_dem,
     label=labels2,
     color=colors2,
-    xticks = (0:1:12, string.(0:1:12)),
-    xlabel="Month",
+    xticks = (0:2000:8760, string.(0:2000:8760)),
+    xlabel="Hour",
     ylabel="kW",
     width=0,
     leg=:outertopright
