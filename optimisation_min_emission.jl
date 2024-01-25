@@ -131,7 +131,7 @@ end
     sum(ef_elec[p] * G[p,t] for p in P, t in T) * dispatch_scale
     + sum(ef_heat[h] * H[h,t] for h in HEAT, t in T) *dispatch_scale
     + sum(ef_elec[p] * CAP_G[p] for p in P)
-    + sum(ef_heat[h] * CAP_G[h] for h in H_only)
+    + sum(ef_heat[h] * CAP_G[h] for h in HEAT)
     #+ sum(ef_elec[ndisp] * G[ndisp,t] for ndisp in NONDISP, t in T) * dispatch_scale
     #+ sum(ef_elec[h_pump] * G[h_pump,t] for h_pump in H_pump, t in T)
     #+ sum(ic_storage_cap[s] * CAP_L[s] for s in S)
