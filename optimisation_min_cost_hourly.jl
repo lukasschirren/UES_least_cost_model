@@ -239,7 +239,7 @@ colordict = Dict(
 )
 
 
-i="3M" # Define scenario number to store output
+i="3" # Define scenario number to store output
 
 ######## plot electricity balance ###########
 
@@ -257,7 +257,7 @@ result_demand = vcat(result_charging, result_CU, df_demand)
 table_gen = unstack(result_generation, :hour, :technology, :value,combine=sum)
 
 # OUTPUT to EXCEL
-str = "results_csv_monthly\\" * i * "Hourly_Electricity_Gen.csv"
+str = "results_csv_h\\" * i * "Hourly_Electricity_Gen.csv"
 CSV.write(str,  table_gen)
 
 table_gen = table_gen[!,[NONDISP..., DISP...]]
@@ -284,7 +284,7 @@ replace!(labels2, [item => "" for item in intersect(labels2, labels)]...)
 data_dem = -Array(table_dem)
 
 # OUTPUT to EXCEL
-str = "results_csv_monthly\\" * i * "Hourly_Electricity_Demand.csv"
+str = "results_csv_h\\" * i * "Hourly_Electricity_Demand.csv"
 CSV.write(str,  table_dem)
 
 areaplot!(
@@ -298,7 +298,7 @@ areaplot!(
 
 hline!(balance_plot, [0], color=:black, label="", width=2)
 
-str = "results_monthly\\" * i * "Dispatch_Electricity.pdf"
+str = "results_h\\" * i * "Dispatch_Electricity.pdf"
 savefig(str)
 
 ######## plot heat balance ###########
@@ -321,7 +321,7 @@ table_gen = table_gen[!,[HEAT...]]
 
 # OUTPUT to EXCEL
 
-str = "results_csv_monthly\\" * i * "Hourly_Heat_Gen.csv"
+str = "results_csv_h\\" * i * "Hourly_Heat_Gen.csv"
 CSV.write(str,  table_gen)
 
 labels = names(table_gen) |> permutedims
@@ -358,7 +358,7 @@ areaplot!(
 
 hline!(balance_plot, [0], color=:black, label="", width=2)
 
-str = "results_monthly\\" * i * "Dispatch_Heat.pdf"
+str = "results_h\\" * i * "Dispatch_Heat.pdf"
 
 savefig(str)
 
@@ -414,5 +414,5 @@ plot(
     tickfontsize=6
 )
 
-str = "results_monthly\\" * i * "Power_generation.pdf"
+str = "results_h\\" * i * "Power_generation.pdf"
 savefig(str)

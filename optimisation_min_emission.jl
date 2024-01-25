@@ -240,7 +240,7 @@ colordict = Dict(
 )
 
 
-i="E1" # Define scenario number to store output
+i="E1_noGasB" # Define scenario number to store output
 
 ######## plot electricity balance ###########
 
