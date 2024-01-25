@@ -47,6 +47,9 @@ n_pipeline = 30 # years
 
 tech_data[2,"pipeline_m"]
 
+ef_elec = Dict{String, Float64}() 
+ef_heat = Dict{String, Float64}()
+
 ic_generation_cap = Dict{String, Float64}()
 ic_charging_cap = Dict{String, Float64}()
 ic_storage_cap = Dict{String, Float64}()
@@ -77,6 +80,9 @@ for row in eachrow(tech_data)
     row.storage_efficiency_out > 0 && (eff_out[row.technology] = row.storage_efficiency_out)
 
     vc[row.technology] = row.vc
+
+    ef_elec[row.technology] = row.emission_elec #* af + row.o_and_m
+    ef_heat[row.technology] = row.emission_heat
 end
 
 ic_generation_cap = mergewith(+, ic_generation_cap, pipeline_cost_dict)
@@ -120,8 +126,8 @@ m = Model(Gurobi.Optimizer)
     L_stor[S,T] >= 0
 
     ###############
-    IM[T] >= 0
-    EX[T] >= 0
+    # IM[T] >= 0
+    # EX[T] >= 0
     # variables investment model
     CAP_G[P] >= 0
     CAP_D[S] >= 0
@@ -137,8 +143,8 @@ end
     #+ sum(ic_charging_cap[s] * CAP_D[s] for s in S if haskey(ic_charging_cap, s))
     + sum(ic_storage_cap[s] * CAP_L[s] for s in S)
     #- sum(CU[t] *0.18 for t in T)
-    + sum(IM[t] * 0.38 for t in T)
-    - sum(EX[t] * 0.18 for t in T)
+    # + sum(IM[t] * 0.38 for t in T)
+    # - sum(EX[t] * 0.18 for t in T)
 ) 
 
 # Renewable generation
@@ -150,11 +156,11 @@ end
     - sum(D_stor[s,t] for s in S)
     #- CU[t]
     #########
-    + IM[t]
+    # + IM[t]
     ==
     demand_elec[t] / dispatch_scale
     ###########
-    + EX[t]
+    # + EX[t]
     + H["heatpumps",t] / 3.5 # Considering electricity consumption of heat pumps
     )
 
@@ -217,7 +223,8 @@ end
 @constraint(m,Maxchp_4cells,
     CAP_G["chp_4cells"]<= 933.216)
 
-
+# @constraint(m,EmissionElec[disp = DISP,ndisp = NONDISP, t = T],
+#     (ef_elec[p] *CAP_G[p] / <= 51)
 
 optimize!(m)
 
@@ -243,8 +250,8 @@ colordict = Dict(
     "battery" => :lightseagreen,
     "demand" => :darkgrey,
     "curtailment" => :red,
-    "IM" => :green,
-    "EX"  => :green
+    # "IM" => :green,
+    # "EX"  => :green
 )
 
 
@@ -256,21 +263,21 @@ result_G = get_result(G, [:technology, :hour])
 result_feed_in = get_result(feed_in, [:technology, :hour])
 
 result_charging = get_result(D_stor, [:technology, :hour])
-# result_CU = get_result(CU, [:hour])
-# result_CU[!,:technology] .= "curtailment"
+result_CU = get_result(CU, [:hour])
+result_CU[!,:technology] .= "curtailment"
 
-result_IM = get_result(IM, [:hour])
-result_IM[!,:technology] .= "IM"
+# result_IM = get_result(IM, [:hour])
+# result_IM[!,:technology] .= "IM"
 result_EX = get_result(EX, [:hour])
-result_EX[!,:technology] .= "EX"
+# result_EX[!,:technology] .= "EX"
 
 df_demand = DataFrame(hour=T, technology="demand", value=demand_elec)
 
-result_generation = vcat(result_feed_in, result_G,result_IM)
+result_generation = vcat(result_feed_in, result_G) #result_IM
 
 # result_demand = vcat(result_charging, result_CU, df_demand)
 
-result_demand = vcat(result_charging, result_EX, df_demand)
+result_demand = vcat(result_charging, result_CU,df_demand) #result_EX
 
 table_gen = unstack(result_generation, :hour, :technology, :value,combine=sum)
 
@@ -278,7 +285,7 @@ table_gen = unstack(result_generation, :hour, :technology, :value,combine=sum)
 str = "results_csv_monthly\\" * i * "Hourly_Electricity_Gen.csv"
 CSV.write(str,  table_gen)
 
-table_gen = table_gen[!,[NONDISP..., DISP...,"IM"]]
+table_gen = table_gen[!,[NONDISP..., DISP...]] #,"IM"
 labels = names(table_gen) |> permutedims
 colors = [colordict[tech] for tech in labels]
 data_gen = Array(table_gen)
