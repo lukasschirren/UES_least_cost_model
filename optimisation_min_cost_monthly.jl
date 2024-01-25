@@ -120,7 +120,7 @@ m = Model(Gurobi.Optimizer)
     # variables dispatch (include heat)
     G[P, T] >= 0
     H[HEAT, T] >= 0
-    #CU[T] >= 0
+    CU[T] >= 0
     HeatDump[T] >= 0
     D_stor[S,T] >= 0
     L_stor[S,T] >= 0
@@ -142,7 +142,6 @@ end
     + sum(ic_generation_cap[p] * CAP_G[p] for p in P)
     #+ sum(ic_charging_cap[s] * CAP_D[s] for s in S if haskey(ic_charging_cap, s))
     + sum(ic_storage_cap[s] * CAP_L[s] for s in S)
-    #- sum(CU[t] *0.18 for t in T)
     # + sum(IM[t] * 0.38 for t in T)
     # - sum(EX[t] * 0.18 for t in T)
 ) 
@@ -154,7 +153,7 @@ end
     sum(G[disp,t] for disp in DISP)
     + sum(feed_in[ndisp,t] for ndisp in NONDISP)
     - sum(D_stor[s,t] for s in S)
-    #- CU[t]
+    - CU[t]
     #########
     # + IM[t]
     ==
@@ -255,7 +254,7 @@ colordict = Dict(
 )
 
 
-i="4M_GRID_" # Define scenario number to store output
+i="3M" # Define scenario number to store output
 
 ######## plot electricity balance ###########
 
@@ -305,8 +304,8 @@ table_dem = unstack(result_demand, :hour, :technology, :value)
 table_dem[:,"demand"] = table_dem[:,"demand"] / dispatch_scale
 ###############
 
-# table_dem = table_dem[!,["demand", S...,"curtailment"]]
-table_dem = table_dem[!,["demand", S...,"EX"]]
+table_dem = table_dem[!,["demand", S...,"curtailment"]]
+# table_dem = table_dem[!,["demand", S...,"EX"]]
 
 labels2 = names(table_dem) |> permutedims
 colors2 = [colordict[tech] for tech in labels2]

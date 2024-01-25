@@ -120,8 +120,8 @@ m = Model(Gurobi.Optimizer)
     L_stor[S,T] >= 0
 
     ###############
-    IM[T] >= 0
-    EX[T] >= 0
+    # IM[T] >= 0
+    # EX[T] >= 0
     # variables investment model
     CAP_G[P] >= 0
     CAP_D[S] >= 0
@@ -134,8 +134,8 @@ end
     + sum(ef_heat[h] * H[h,t] for h in HEAT, t in T) *dispatch_scale
     + sum(ef_elec[p] * CAP_G[p] for p in P)
     + sum(ef_heat[h] * CAP_G[h] for h in HEAT)
-    + sum(IM[t] * 50 for t in T)
-    - sum(EX[t] * 50 for t in T)
+    # + sum(IM[t] * 50 for t in T)
+    # - sum(EX[t] * 50 for t in T)
     #+ sum(ef_elec[ndisp] * G[ndisp,t] for ndisp in NONDISP, t in T) * dispatch_scale
     #+ sum(ef_elec[h_pump] * G[h_pump,t] for h_pump in H_pump, t in T)
     #+ sum(ic_storage_cap[s] * CAP_L[s] for s in S)
@@ -149,13 +149,13 @@ end
     sum(G[disp,t] for disp in DISP)
     + sum(feed_in[ndisp,t] for ndisp in NONDISP)
     - sum(D_stor[s,t] for s in S)
-    # - CU[t]
+    - CU[t]
     #########
-    + IM[t]
+    # + IM[t]
     ==
     demand_elec[t] / dispatch_scale
     #########
-    + EX[t]
+    # + EX[t]
     + H["heatpumps",t] / 3.5 # Considering electricity consumption of heat pumps
     )
 
@@ -243,14 +243,14 @@ colordict = Dict(
     "gas_boiler" => :slateblue2, 
     "battery" => :lightseagreen,
     "demand" => :darkgrey,
-    # "curtailment" => :red,
-    "IM" => :green,
-    "EX"  => :green
+    "curtailment" => :red,
+    # "IM" => :green,
+    # "EX"  => :green
     # "heat_dump" => :red,
 )
 
 
-i="E2_GRID_" # Define scenario number to store output
+i="E1" # Define scenario number to store output
 
 ######## plot electricity balance ###########
 
@@ -258,21 +258,21 @@ result_G = get_result(G, [:technology, :hour])
 result_feed_in = get_result(feed_in, [:technology, :hour])
 
 result_charging = get_result(D_stor, [:technology, :hour])
-# result_CU = get_result(CU, [:hour])
-# result_CU[!,:technology] .= "curtailment"
+result_CU = get_result(CU, [:hour])
+result_CU[!,:technology] .= "curtailment"
 
-result_IM = get_result(IM, [:hour])
-result_IM[!,:technology] .= "IM"
-result_EX = get_result(EX, [:hour])
-result_EX[!,:technology] .= "EX"
+# result_IM = get_result(IM, [:hour])
+# result_IM[!,:technology] .= "IM"
+# result_EX = get_result(EX, [:hour])
+# result_EX[!,:technology] .= "EX"
 
 df_demand = DataFrame(hour=T, technology="demand", value=demand_elec)
 
 
-# result_generation = vcat(result_feed_in, result_G)
-# result_demand = vcat(result_charging, result_CU, df_demand)
-result_generation = vcat(result_feed_in, result_G, result_IM)
-result_demand = vcat(result_charging,result_EX, df_demand)
+result_generation = vcat(result_feed_in, result_G)
+result_demand = vcat(result_charging, result_CU, df_demand)
+#result_generation = vcat(result_feed_in, result_IM, result_G) #
+#result_demand = vcat(result_charging, df_demand,result_EX) #
 
 table_gen = unstack(result_generation, :hour, :technology, :value,combine=sum)
 
@@ -281,7 +281,7 @@ str = "results_csv_emission\\" * i * "Hourly_Electricity_Gen.csv"
 
 CSV.write(str,  table_gen)
 
-table_gen = table_gen[!,[NONDISP..., DISP...,"IM"]]
+table_gen = table_gen[!,[NONDISP..., DISP...]] #,"IM"
 labels = names(table_gen) |> permutedims
 colors = [colordict[tech] for tech in labels]
 data_gen = Array(table_gen)
@@ -304,7 +304,7 @@ table_dem[:,"demand"] = table_dem[:,"demand"] / dispatch_scale
 str = "results_csv_emission\\" * i * "Hourly_Electricity_Demand.csv"
 CSV.write(str,  table_dem)
 
-table_dem = table_dem[!,["demand", S...,"EX"]]
+table_dem = table_dem[!,["demand", S...,"curtailment"]]
 labels2 = names(table_dem) |> permutedims
 colors2 = [colordict[tech] for tech in labels2]
 replace!(labels2, [item => "" for item in intersect(labels2, labels)]...)
