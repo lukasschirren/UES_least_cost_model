@@ -17,7 +17,7 @@ end
 
 
 dir = dirname(Base. source_path())
-time_series = CSV.read(joinpath(dir, "data\\timedata_hourly.csv"), DataFrame)
+time_series = CSV.read(joinpath(dir, "data\\timedata_monthly.csv"), DataFrame)
 
 tech_data = CSV.read(joinpath(dir, "data\\technologies_pipeline.csv"), DataFrame)
 
@@ -129,8 +129,8 @@ end
 #@variable(m,x_chp[P_CHP],Bin)
 
 @objective(m, Min,
-    sum(vc[disp] * G[disp,t] for disp in DISP, t in T) #* dispatch_scale
-    + sum(vc[h] * H[h,t] for h in H_only, t in T) #* dispatch_scale
+    sum(vc[disp] * G[disp,t] for disp in DISP, t in T) * dispatch_scale
+    + sum(vc[h] * H[h,t] for h in H_only, t in T) * dispatch_scale
     + sum(ic_generation_cap[p] * CAP_G[p] for p in P)
     #+ sum(ic_charging_cap[s] * CAP_D[s] for s in S if haskey(ic_charging_cap, s))
     + sum(ic_storage_cap[s] * CAP_L[s] for s in S)
@@ -146,7 +146,7 @@ end
     - sum(D_stor[s,t] for s in S)
     - CU[t]
     ==
-    demand_elec[t] #/ dispatch_scale
+    demand_elec[t] / dispatch_scale
     + H["heatpumps",t] / 3.5 # Considering electricity consumption of heat pumps
     )
 
@@ -157,7 +157,7 @@ end
 @constraint(m,HeatBalance[t=T],
     sum(H[ht,t] for ht in HEAT)
     ==
-    demand_heat[t] #/ dispatch_scale
+    demand_heat[t] / dispatch_scale
     )
 
 # Generation of heat must equal installed capacity (CHP, heatpumps)
@@ -198,7 +198,7 @@ end
     CAP_G["chp_hospital"]<= 960.38)
 
 @constraint(m,MaxShopping,
-    CAP_G["chp_shopping"]== 2732.422)
+    CAP_G["chp_shopping"]<= 2732.422)
 
 @constraint(m,Maxchp1_2cells,
     CAP_G["chp1_2cells"]<= 729.167)
@@ -231,7 +231,7 @@ colordict = Dict(
     "chp2_2cells" => :dodgerblue3, #
     "chp_4cells" => :steelblue3, # 
     "heatpumps" => :gold2, # 
-    "gas_boiler" => :slateblue2, 
+    # "gas_boiler" => :slateblue2, 
     "battery" => :lightseagreen,
     "demand" => :darkgrey,
     "curtailment" => :red,
@@ -239,7 +239,7 @@ colordict = Dict(
 )
 
 
-i="3" # Define scenario number to store output
+i="3M" # Define scenario number to store output
 
 ######## plot electricity balance ###########
 
@@ -257,8 +257,7 @@ result_demand = vcat(result_charging, result_CU, df_demand)
 table_gen = unstack(result_generation, :hour, :technology, :value,combine=sum)
 
 # OUTPUT to EXCEL
-str = "results_csv\\" * i * "Hourly_Electricity_Gen.csv"
-
+str = "results_csv_monthly\\" * i * "Hourly_Electricity_Gen.csv"
 CSV.write(str,  table_gen)
 
 table_gen = table_gen[!,[NONDISP..., DISP...]]
@@ -276,15 +275,20 @@ balance_plot = areaplot(
 
 table_dem = unstack(result_demand, :hour, :technology, :value)
 
-# OUTPUT to EXCEL
-str = "results_csv\\" * i * "Hourly_Electricity_Demand.csv"
-CSV.write(str,  table_dem)
+
+################
+table_dem[:,"demand"] = table_dem[:,"demand"] / dispatch_scale
+###############
 
 table_dem = table_dem[!,["demand", S...,"curtailment"]]
 labels2 = names(table_dem) |> permutedims
 colors2 = [colordict[tech] for tech in labels2]
 replace!(labels2, [item => "" for item in intersect(labels2, labels)]...)
 data_dem = -Array(table_dem)
+
+# OUTPUT to EXCEL
+str = "results_csv_monthly\\" * i * "Hourly_Electricity_Demand.csv"
+CSV.write(str,  table_dem)
 
 areaplot!(
     balance_plot,
@@ -297,7 +301,7 @@ areaplot!(
 
 hline!(balance_plot, [0], color=:black, label="", width=2)
 
-str = "results\\" * i * "Dispatch_Electricity.pdf"
+str = "results_monthly\\" * i * "Dispatch_Electricity.pdf"
 savefig(str)
 
 ######## plot heat balance ###########
@@ -320,7 +324,7 @@ table_gen = table_gen[!,[HEAT...]]
 
 # OUTPUT to EXCEL
 
-str = "results_csv\\" * i * "Hourly_Heat_Gen.csv"
+str = "results_csv_monthly\\" * i * "Hourly_Heat_Gen.csv"
 CSV.write(str,  table_gen)
 
 labels = names(table_gen) |> permutedims
@@ -337,6 +341,11 @@ balance_plot = areaplot(
 
 # Displaying demand
 table_dem = unstack(df_demand_heat, :hour, :technology, :value)
+
+################
+table_dem[:,"demand"] = table_dem[:,"demand"] / dispatch_scale
+###############
+
 table_dem = table_dem[!,["demand"]]
 labels2 = names(table_dem) |> permutedims
 colors2 = [colordict[tech] for tech in labels2]
@@ -354,7 +363,7 @@ areaplot!(
 
 hline!(balance_plot, [0], color=:black, label="", width=2)
 
-str = "results\\" * i * "Dispatch_Heat.pdf"
+str = "results_monthly\\" * i * "Dispatch_Heat.pdf"
 
 savefig(str)
 
@@ -410,5 +419,5 @@ plot(
     tickfontsize=6
 )
 
-str = "results\\" * i * "Power_generation.pdf"
+str = "results_monthly\\" * i * "Power_generation.pdf"
 savefig(str)
