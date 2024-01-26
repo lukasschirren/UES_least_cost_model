@@ -219,10 +219,10 @@ end
     CAP_G["chp1_2cells"]<= 729.167)
 
 @constraint(m,Maxchp2_2cells,
-    CAP_G["chp2_2cells"]<= 666.667)
+    CAP_G["chp2_2cells"]== 666.667)
 
 @constraint(m,Maxchp_4cells,
-    CAP_G["chp_4cells"]<= 933.216)
+    CAP_G["chp_4cells"]== 0)
 
 # @constraint(m,EmissionElec[disp = DISP,ndisp = NONDISP, t = T],
 #     (ef_elec[p] *CAP_G[p] / <= 51)
@@ -256,7 +256,7 @@ colordict = Dict(
 )
 
 
-i="4M2_GRID_" # Define scenario number to store output
+i="4M6_GRID_" # Define scenario number to store output
 
 ######## plot electricity balance ###########
 
