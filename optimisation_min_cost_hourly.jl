@@ -190,24 +190,24 @@ end
 
 
 @constraint(m,MaxPV[ndisp=NONDISP],
-    CAP_G[ndisp] <= 26228.18) # Max is 26MW
+    CAP_G[ndisp] == 5234) # 26228.18) # Max is 26MW
 
 
 # CONSTRAINT FOR CHP locations based on pipeline network model
 @constraint(m,MaxHospital,
-    CAP_G["chp_hospital"]<= 960.38)
+    CAP_G["chp_hospital"]<= 0)#960.38)
 
 @constraint(m,MaxShopping,
-    CAP_G["chp_shopping"]<= 2732.422)
+    CAP_G["chp_shopping"]== 2732.422)
 
 @constraint(m,Maxchp1_2cells,
-    CAP_G["chp1_2cells"]<= 729.167)
+    CAP_G["chp1_2cells"]==0)# 729.167)
 
 @constraint(m,Maxchp2_2cells,
-    CAP_G["chp2_2cells"]<= 666.667)
+    CAP_G["chp2_2cells"]==0)# 666.667)
 
 @constraint(m,Maxchp_4cells,
-    CAP_G["chp_4cells"]<= 933.216)
+    CAP_G["chp_4cells"]==0)# 933)
 
 # @constraint(m,LimitEmission,
     # )
@@ -232,7 +232,7 @@ colordict = Dict(
     "chp2_2cells" => :dodgerblue3, #
     "chp_4cells" => :steelblue3, # 
     "heatpumps" => :gold2, # 
-    # "gas_boiler" => :slateblue2, 
+    "gas_boiler" => :slateblue2, 
     "battery" => :lightseagreen,
     "demand" => :darkgrey,
     "curtailment" => :red,
@@ -241,7 +241,7 @@ colordict = Dict(
 
 
 
-i="3" # Define scenario number to store output
+i="OPT" # Define scenario number to store output
 
 ######## plot electricity balance ###########
 
